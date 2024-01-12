@@ -1,5 +1,8 @@
 name: Docker Image CI
 
+env:
+  OWNER: ${{ github.repository_owner }}
+
 on:
   workflow_dispatch:
   push:
@@ -21,12 +24,6 @@ jobs:
       - name: Check out the repo
         uses: actions/checkout@v4
 
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ github.repository_owner }}/${{ github.repository }}
-
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -42,6 +39,12 @@ jobs:
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_TOKEN }}
 
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.OWNER }}/${{ github.repository }}
+
       - name: Build push and image
         uses: docker/build-push-action@v5
         with:
@@ -49,7 +52,7 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64/v8
           tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=registry,ref=${{ github.repository_owner }}/${{ github.repository }}:latest
+          cache-from: type=registry,ref=${{ env.OWNER }}/${{ github.repository }}:latest
           cache-to: type=inline
           push: ${{ github.event_name != 'pull_request' }}
           labels: ${{ steps.meta.outputs.labels }}
