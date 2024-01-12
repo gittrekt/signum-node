@@ -36,61 +36,6 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64/v8
           tags: ${{ github.repository }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=registry,ref=${{ secrets.REGISTRY_USERNAME }}/${{ github.repository }}:latest
+          cache-to: type=inline
           push: true
-
-      - name: Build and load amd64 image
-        uses: docker/build-push-action@v5
-        with:
-          file: 'Dockerfile'
-          context: .
-          platforms: linux/amd64
-          tags: ${{ github.repository }}:amd64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          load: true
-
-      - name: Build and load arm64 image
-        uses: docker/build-push-action@v5
-        with:
-          file: 'Dockerfile'
-          context: .
-          platforms: linux/arm64/v8
-          tags: ${{ github.repository }}:arm64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          load: true
-
-      - name: Build slim amd64 image
-        uses: kitabisa/docker-slim-action@v1
-        env:
-          DSLIM_HTTP_PROBE: false
-          DSLIM_INCLUDE_PATH: /jre
-          DSLIM_TARGET_OVERRIDES: all
-          DSLIM_RC_VOLUME: /conf
-          DSLIM_IMAGE_BUILD_ARCH: amd64
-        with:
-          target: "${{ github.repository }}:amd64"
-          overwrite: true
-          tag: "amd64"
-
-      - name: Slim arm64 image
-        uses: kitabisa/docker-slim-action@v1
-        env:
-          DSLIM_HTTP_PROBE: false
-          DSLIM_INCLUDE_PATH: /jre
-          DSLIM_TARGET_OVERRIDES: all
-          DSLIM_RC_VOLUME: /conf
-          DSLIM_IMAGE_BUILD_ARCH: arm64
-        with:
-          target: "${{ github.repository }}:arm64"
-          overwrite: true
-          tag: "arm64"
-
-      - name: Upload to registry
-        run: |
-          docker image push "${{ github.repository }}:amd64"
-          docker image push "${{ github.repository }}:arm64"
-          docker manifest create --amend "${{ github.repository }}:slim" "${{ github.repository }}:amd64" "${{ github.repository }}:arm64"
-          docker manifest push "${{ github.repository }}:slim"
