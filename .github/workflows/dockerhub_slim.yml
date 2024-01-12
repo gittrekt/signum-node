@@ -24,7 +24,7 @@ jobs:
           platforms: linux/amd64,linux/arm64/v8
 
       - name: Log in to Docker Hub
-        uses: docker/login-action@v1
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_TOKEN }}
@@ -68,7 +68,7 @@ jobs:
           DSLIM_HTTP_PROBE: false
           DSLIM_INCLUDE_PATH: /jre
           DSLIM_TARGET_OVERRIDES: all
-          DSLIM_RC_VOLUME: true
+          DSLIM_RC_VOLUME: /conf
           DSLIM_IMAGE_BUILD_ARCH: amd64
         with:
           target: "${{ github.repository }}:amd64"
@@ -81,7 +81,7 @@ jobs:
           DSLIM_HTTP_PROBE: false
           DSLIM_INCLUDE_PATH: /jre
           DSLIM_TARGET_OVERRIDES: all
-          DSLIM_RC_VOLUME: true
+          DSLIM_RC_VOLUME: /conf
           DSLIM_IMAGE_BUILD_ARCH: arm64
         with:
           target: "${{ github.repository }}:arm64"
