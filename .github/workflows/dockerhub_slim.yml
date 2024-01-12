@@ -29,6 +29,17 @@ jobs:
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_TOKEN }}
 
+      - name: Build push and tag image
+        uses: docker/build-push-action@v5
+        with:
+          file: 'Dockerfile'
+          context: .
+          platforms: linux/amd64,linux/arm64/v8
+          tags: ${{ github.repository }}:${{  github.ref_name }}"
+          cache-from: type=registry,ref=${{ secrets.REGISTRY_USERNAME }}/${{ github.repository }}:latest
+          cache-to: type=inline
+          push: true
+
       - name: Build push and latest image
         uses: docker/build-push-action@v5
         with:
