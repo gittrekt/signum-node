@@ -27,6 +27,7 @@ jobs:
           platforms: linux/amd64,linux/arm64/v8
 
       - name: Docker meta
+        if: github.event_name != 'workflow_dispatch'
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -34,13 +35,13 @@ jobs:
           tags: type=semver,pattern={{version}}
 
       - name: Log in to Docker Hub
-        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_TOKEN }}
 
       - name: Build push and release
+        if: github.event_name != 'workflow_dispatch'
         uses: docker/build-push-action@v5
         with:
           file: 'Dockerfile'
@@ -53,6 +54,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
       - name: Build push and workflow
+        if: github.event_name == 'workflow_dispatch'
         uses: docker/build-push-action@v5
         with:
           file: 'Dockerfile'
