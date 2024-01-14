@@ -1,0 +1,68 @@
+# Node builder *number of layers dont matter here*
+# Currently only supports amd64,arm64/v8
+# TODO: Figure out why eclipse-temurin doesn't work - more supported platforms
+
+FROM amazoncorretto:11-alpine-jdk as builder
+RUN  apk update && apk upgrade \
+  && apk add --no-cache --update coreutils bind-tools git unzip wget curl \
+  && rm -rf /var/cache/apk/*
+
+WORKDIR /signum-node
+COPY . .
+
+RUN chmod +x /signum-node/gradlew \
+  && /signum-node/gradlew clean dist \
+  && unzip -o build/distributions/signum-node.zip -d /signum \
+  && cp update-phoenix.sh /signum/update-phoenix.sh \
+  && chmod +x /signum/update-phoenix.sh \ 
+  && (cd /tmp && git clone https://github.com/signum-network/signum-classic-wallet.git \
+    && cp -r signum-classic-wallet/src/* /signum/html/ui/classic/ && rm -rf signum-classic-wallet)
+
+WORKDIR /signum
+CMD ["./update-phoenix.sh"]
+RUN rm -rf /signum/signum-node.exe 2> /dev/null || true \
+  && rm -rf /signum/signum-node.zip 2> /dev/null || true \
+  && rm -rf /signum/*.sh 2> /dev/null || true
+
+# build JRE
+FROM amazoncorretto:11-alpine3.18 as corretto-jdk
+RUN apk add --no-cache binutils
+RUN $JAVA_HOME/bin/jlink \
+         --verbose \
+         --add-modules java.base,java.compiler,java.desktop,java.instrument,java.management,java.naming,java.security.jgss,java.sql,jdk.unsupported \
+         --strip-debug \
+         --no-man-pages \
+         --no-header-files \
+         --compress=2 \
+         --output /customjre
+
+# final alpine image
+FROM alpine:3.18
+LABEL maintainer="GittRekt"
+ARG UID=1001
+ARG GID=1001
+ENV JAVA_HOME=/jre
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
+
+COPY --from=corretto-jdk /customjre $JAVA_HOME
+COPY --chown=$UID:$GID --from=builder /signum /signum
+COPY --chown=$UID:$GID --from=builder /signum-node/conf /conf
+
+RUN  apk update \
+  && apk upgrade \
+  && apk add --no-cache ca-certificates \
+  && update-ca-certificates \
+  && apk add --update coreutils bind-tools \
+  && rm -rf /var/cache/apk/* \
+  && addgroup -g $GID app \
+  && adduser -S -s /bin/sh -u $UID -G app -h /signum app \
+  && chmod g+wx /var/log \
+  && chmod g+wx /signum \
+  && rm -rf /signum/conf \
+  && ln -s /conf /signum/conf
+
+WORKDIR /signum
+VOLUME ["/conf"]
+EXPOSE 8125/tcp 8123/tcp
+USER app
+ENTRYPOINT [ "/jre/bin/java", "-XX:MaxRAMPercentage=75.0", "-jar", "/signum/signum-node.jar", "--headless",  "-c", "/signum/conf/" ]

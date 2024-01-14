@@ -1,7 +1,10 @@
 name: Docker Image CI
+
 on:
   workflow_dispatch:
   push:
+    branches:
+      - 'main'
     tags:
       - 'v*'
 
@@ -13,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out the repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -23,74 +26,42 @@ jobs:
         with:
           platforms: linux/amd64,linux/arm64/v8
 
+      - name: Docker meta
+        if: github.event_name != 'workflow_dispatch'
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER }}
+          tags: type=semver,pattern={{version}}
+
       - name: Log in to Docker Hub
-        uses: docker/login-action@v1
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_TOKEN }}
 
-      - name: Build push and latest image
+      - name: Build push and release
+        if: github.event_name != 'workflow_dispatch'
+        uses: docker/build-push-action@v5
+        with:
+          file: 'Dockerfile'
+          context: .
+          platforms: linux/amd64,linux/arm64/v8
+          tags: ${{ github.repository }}:${{ env.DOCKER_METADATA_OUTPUT_VERSION }}, ${{ github.repository }}:latest
+          cache-from: type=registry,ref=${{ env.DOCKER }}:latest
+          cache-to: type=inline
+          push: ${{ github.event_name != 'workflow_dispatch' }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Build push and workflow
+        if: github.event_name == 'workflow_dispatch'
         uses: docker/build-push-action@v5
         with:
           file: 'Dockerfile'
           context: .
           platforms: linux/amd64,linux/arm64/v8
           tags: ${{ github.repository }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          push: true
-
-      - name: Build and load amd64 image
-        uses: docker/build-push-action@v5
-        with:
-          file: 'Dockerfile'
-          context: .
-          platforms: linux/amd64
-          tags: ${{ github.repository }}:amd64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          load: true
-
-      - name: Build and load arm64 image
-        uses: docker/build-push-action@v5
-        with:
-          file: 'Dockerfile'
-          context: .
-          platforms: linux/arm64/v8
-          tags: ${{ github.repository }}:arm64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          load: true
-
-      - name: Build slim amd64 image
-        uses: kitabisa/docker-slim-action@v1
-        env:
-          DSLIM_HTTP_PROBE: false
-          DSLIM_INCLUDE_PATH: /jre
-          DSLIM_TARGET_OVERRIDES: all
-          DSLIM_RC_VOLUME: true
-          DSLIM_IMAGE_BUILD_ARCH: amd64
-        with:
-          target: "${{ github.repository }}:amd64"
-          overwrite: true
-          tag: "amd64"
-
-      - name: Slim arm64 image
-        uses: kitabisa/docker-slim-action@v1
-        env:
-          DSLIM_HTTP_PROBE: false
-          DSLIM_INCLUDE_PATH: /jre
-          DSLIM_TARGET_OVERRIDES: all
-          DSLIM_RC_VOLUME: true
-          DSLIM_IMAGE_BUILD_ARCH: arm64
-        with:
-          target: "${{ github.repository }}:arm64"
-          overwrite: true
-          tag: "arm64"
-
-      - name: Upload to registry
-        run: |
-          docker image push "${{ github.repository }}:amd64"
-          docker image push "${{ github.repository }}:arm64"
-          docker manifest create --amend "${{ github.repository }}:slim" "${{ github.repository }}:amd64" "${{ github.repository }}:arm64"
-          docker manifest push "${{ github.repository }}:slim"
+          cache-from: type=registry,ref=${{ env.DOCKER }}:latest
+          cache-to: type=inline
+          push: ${{ github.event_name == 'workflow_dispatch' }}
+          labels: ${{ steps.meta.outputs.labels }}
