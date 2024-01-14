@@ -1,8 +1,5 @@
 name: Docker Image CI
 
-env:
-  DOCKER: gittrekt/signum-node
-
 on:
   workflow_dispatch:
   push:
@@ -61,7 +58,7 @@ jobs:
           file: 'Dockerfile'
           context: .
           platforms: linux/amd64,linux/arm64/v8
-          tags: ${{ github.repository }}:${{ env.DOCKER_METADATA_OUTPUT_VERSION }}, ${{ github.repository }}:latest
+          tags: ${{ github.repository }}:latest
           cache-from: type=registry,ref=${{ env.DOCKER }}:latest
           cache-to: type=inline
           push: ${{ github.event_name == 'workflow_dispatch' }}
