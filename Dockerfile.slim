@@ -37,7 +37,7 @@ RUN $JAVA_HOME/bin/jlink \
          --output /customjre
 
 # final alpine image
-FROM alpine:3.18
+FROM alpine:3
 LABEL maintainer="GittRekt"
 ARG UID=1001
 ARG GID=1001
