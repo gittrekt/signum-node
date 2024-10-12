@@ -102,6 +102,8 @@ public final class Constants {
                                                         is set as number of seconds before the current time. */
 
   public static final int EC_BLOCK_DISTANCE_LIMIT = 60;
+  public static final int EC_VERIFICATION_DEPTH = 10;
+  public static final int MAX_TIMESTAMP_DIFFERENCE = 15;
   public static final int EC_CHANGE_BLOCK_1 = 67000;
 
   public static final String RESPONSE = "response";

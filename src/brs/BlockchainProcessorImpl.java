@@ -100,7 +100,7 @@ public final class BlockchainProcessorImpl implements BlockchainProcessor {
   private final IndirectIncomingService indirectIncomingService;
   private final long genesisBlockId;
 
-  private static final int MAX_TIMESTAMP_DIFFERENCE = 15;
+  private static final int MAX_TIMESTAMP_DIFFERENCE = Constants.MAX_TIMESTAMP_DIFFERENCE;
   private boolean oclVerify;
   private final int oclUnverifiedQueue;
 

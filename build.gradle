@@ -166,7 +166,7 @@ createExe {
 }
 
 node {
-  download = true
+  download = false
   version = '16.14.0'
   nodeProjectDir = file("${project.projectDir}/openapi")
   npmInstallCommand = "ci"
