@@ -58,7 +58,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.util.Properties;
+//import java.util.Properties;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -280,8 +280,6 @@ public final class Signum {
             fluxCapacitor = new FluxCapacitorImpl(blockchain, propertyService);
             aliasService.addDefaultTLDs();
 
-            EconomicClustering economicClustering = new EconomicClustering(blockchain);
-
             final AccountService accountService = new AccountServiceImpl(stores.getAccountStore(),
                     stores.getAssetTransferStore());
 
@@ -305,6 +303,16 @@ public final class Signum {
                             fluxCapacitor);
 
             transactionService = new TransactionServiceImpl(accountService, blockchain);
+
+            final BlockService blockService = new BlockServiceImpl(
+                    accountService,
+                    transactionService,
+                    blockchain,
+                    downloadCache,
+                    generator,
+                    params);
+
+            EconomicClustering economicClustering = new EconomicClustering(blockchain, blockService, transactionService);
 
             transactionProcessor = new TransactionProcessorImpl(
                     propertyService,
@@ -354,13 +362,6 @@ public final class Signum {
                     subscriptionService,
                     escrowService);
 
-            final BlockService blockService = new BlockServiceImpl(
-                    accountService,
-                    transactionService,
-                    blockchain,
-                    downloadCache,
-                    generator,
-                    params);
             blockchainProcessor = new BlockchainProcessorImpl(
                     threadPool,
                     blockService,

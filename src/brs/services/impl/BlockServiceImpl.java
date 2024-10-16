@@ -409,4 +409,17 @@ public class BlockServiceImpl implements BlockService {
   public int getScoopNum(Block block) {
     return generator.calculateScoop(block.getGenerationSignature(), block.getHeight());
   }
+
+  @Override
+  public long calculateEconomicWeight(Block block) {
+    long economicWeight = block.getTotalFeeNqt(); // Include block fees in the economic weight
+    
+    for (Transaction transaction : block.getTransactions()) {
+        economicWeight += transaction.getAmountNqt();
+    }
+    
+    // Ensure a minimum economic weight, even for empty blocks
+    long minEconomicWeight = Signum.getPropertyService().getInt(Props.ONE_COIN_NQT);
+    return Math.max(economicWeight, minEconomicWeight);
+  }
 }

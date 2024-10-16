@@ -26,4 +26,6 @@ public interface BlockService {
   void apply(Block block);
 
   int getScoopNum(Block block);
+
+  long calculateEconomicWeight(Block block);
 }

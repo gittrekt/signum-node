@@ -100,7 +100,7 @@ public final class BlockchainProcessorImpl implements BlockchainProcessor {
   private final IndirectIncomingService indirectIncomingService;
   private final long genesisBlockId;
 
-  private static final int MAX_TIMESTAMP_DIFFERENCE = 15;
+  private static final int MAX_TIMESTAMP_DIFFERENCE = Constants.MAX_TIMESTAMP_DIFFERENCE;
   private boolean oclVerify;
   private final int oclUnverifiedQueue;
 
@@ -303,7 +303,7 @@ public final class BlockchainProcessorImpl implements BlockchainProcessor {
               if (cacheLastBlockId != genesisBlockId) {
                 commonBlockId = getCommonMilestoneBlockId(peer);
                 if (commonBlockId == 0 || !peerHasMore) {
-                  logger.debug("We could not get a common milestone block from peer.");
+                  logger.debug("We could not get a common milestone block from peer: {}", peer.getAnnouncedAddress());
                   return;
                 }
               }
@@ -1076,12 +1076,10 @@ public final class BlockchainProcessorImpl implements BlockchainProcessor {
           }
           if (Signum.getFluxCapacitor().getValue(FluxValues.AUTOMATED_TRANSACTION_BLOCK)
             && !economicClustering.verifyFork(transaction)) {
-            if (logger.isDebugEnabled()) {
-              logger.debug(
+            logger.debug(
                 "Block {} height {} contains transaction that was generated on a fork: {} ecBlockId {} ecBlockHeight {}",
                 block.getStringId(), previousLastBlock.getHeight() + 1, transaction.getStringId(),
                 transaction.getEcBlockHeight(), Convert.toUnsignedLong(transaction.getEcBlockId()));
-            }
             throw new TransactionNotAcceptedException("Transaction belongs to a different fork",
               transaction);
           }
@@ -1300,7 +1298,7 @@ public final class BlockchainProcessorImpl implements BlockchainProcessor {
           dbCacheManager.flushCache();
           stores.commitTransaction();
           downloadCache.resetCache();
-          atProcessorCache.reset();;
+          atProcessorCache.reset();
         } catch (RuntimeException e) {
           stores.rollbackTransaction();
           logger.debug("Error popping off to {}", commonBlock.getHeight(), e);
