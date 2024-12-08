@@ -96,6 +96,10 @@ public final class Signum {
                     .longOpt("headless")
                     .desc("Run in headless mode")
                     .build())
+            .addOption(Option.builder("u")
+                    .longOpt("update-wallets")
+                    .desc("Run update scripts for Phoenix and Classic wallets")
+                    .build())
             .addOption(Option.builder("h")
                     .longOpt("help")
                     .build());

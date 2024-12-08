@@ -27,7 +27,7 @@ public final class JSON {
     }
 
     public static JsonElement parse(Reader jsonReader) {
-        JsonElement json = new JsonParser().parse(jsonReader);
+        JsonElement json = JsonParser.parseReader(jsonReader);
         if (json.isJsonPrimitive()) {
             throw new JsonParseException("Json is primitive, was probably bad json interpreted as string");
         }

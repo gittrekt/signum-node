@@ -49,18 +49,43 @@ jobs:
           images: ${{ secrets.DOCKERHUB_REPO }}
           tags: |
             type=semver,pattern={{version}},event=push
-            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') }}
-            type=raw,value={{branch}},enable=${{ github.ref != format('refs/heads/{0}', 'main') }}
+            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', 'main') && (github.event_name == 'workflow_dispatch' || github.event_name == 'push') }}
+            type=raw,value={{branch}},enable=${{ github.ref != format('refs/heads/{0}', 'main') && github.event_name == 'workflow_dispatch' }}
 
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: './Dockerfile'
+          file: Dockerfile
           push: true
           platforms: linux/amd64,linux/arm64
           cache-from: type=registry,ref=${{ secrets.DOCKERHUB_REPO }}:buildcache
           cache-to: type=registry,ref=${{ secrets.DOCKERHUB_REPO }}:buildcache,mode=max
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          sbom: true
+
+      - name: Extract metadata for slim
+        id: meta-slim
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKERHUB_REPO }}
+          flavor: |
+            suffix=-slim3
+          tags: |
+            type=semver,pattern={{version}},event=push
+            type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', 'main') || github.event_name == 'push' }}
+            type=raw,value={{branch}},enable=${{ github.event_name == 'workflow_dispatch' && github.ref != format('refs/heads/{0}', 'main') }}
+
+      - name: Build and Push Slim Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.slim
+          push: true
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_REPO }}:buildcache
+          cache-to: type=registry,ref=${{ secrets.DOCKERHUB_REPO }}:buildcache,mode=max
+          tags: ${{ steps.meta-slim.outputs.tags }}
+          labels: ${{ steps.meta-slim.outputs.labels }}
           sbom: true

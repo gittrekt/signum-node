@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import brs.Signum;
+import brs.services.UpdateService;
 
 import java.awt.*;
 import java.lang.reflect.InvocationTargetException;
@@ -29,6 +30,10 @@ public class Launcher {
       if (cmd.hasOption("l")) {
         logger.info("Running in headless mode as specified by argument");
         canRunGui = false;
+      }
+      if (cmd.hasOption("u")) {
+        logger.info("Running update scripts for wallets");
+        UpdateService.performUpdates();
       }
     } catch (ParseException e) {
       logger.error("Error parsing arguments", e);
