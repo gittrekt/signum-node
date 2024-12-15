@@ -1,0 +1,288 @@
+name: Build AppImage
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Setup Build AppImagefor ${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            java-arch: x64
+            platform: linux/amd64
+            linuxdeploy-arch: x86_64
+            node-arch: x64
+            use-static: true
+          - arch: arm64
+            java-arch: aarch64
+            platform: linux/arm64
+            linuxdeploy-arch: aarch64
+            node-arch: arm64
+            use-static: false
+          - arch: armhf
+            java-arch: arm
+            platform: linux/arm/v7
+            linuxdeploy-arch: armhf
+            node-arch: armv7l
+            use-static: false
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+      with:
+        platforms: ${{ matrix.platform }}
+    
+    - name: Set up Java Environment
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        cache: 'gradle'
+        java-version: '11.0.25'
+        architecture: ${{ matrix.java-arch }}
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        # Common dependencies
+        sudo apt-get install -y \
+          wget \
+          curl \
+          unzip \
+          fuse \
+          libfuse2 \
+          desktop-file-utils \
+          qemu-user-static \
+          imagemagick \
+          appstream
+
+        # Architecture-specific dependencies
+        if [ "${{ matrix.arch }}" != "amd64" ]; then
+          # Configure repositories for ARM architectures
+          sudo rm /etc/apt/sources.list
+          sudo touch /etc/apt/sources.list
+          echo "deb [arch=amd64] http://azure.archive.ubuntu.com/ubuntu/ jammy main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+          echo "deb [arch=amd64] http://azure.archive.ubuntu.com/ubuntu/ jammy-updates main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+          echo "deb [arch=amd64] http://azure.archive.ubuntu.com/ubuntu/ jammy-security main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+          echo "deb [arch=amd64] http://azure.archive.ubuntu.com/ubuntu/ jammy-backports main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+          
+          echo "deb [arch=${{ matrix.arch }}] http://ports.ubuntu.com/ubuntu-ports jammy main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+          echo "deb [arch=${{ matrix.arch }}] http://ports.ubuntu.com/ubuntu-ports jammy-updates main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+          echo "deb [arch=${{ matrix.arch }}] http://ports.ubuntu.com/ubuntu-ports jammy-security main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+          echo "deb [arch=${{ matrix.arch }}] http://ports.ubuntu.com/ubuntu-ports jammy-backports main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+
+          sudo dpkg --add-architecture ${{ matrix.arch }}
+          sudo apt-get update
+          sudo apt-get install -y \
+            libc6:${{ matrix.arch }} \
+            libstdc++6:${{ matrix.arch }} \
+            libatomic1:${{ matrix.arch }}
+          sudo update-binfmts --enable qemu-${{ matrix.java-arch }}
+        fi
+    
+    - name: Install linuxdeploy
+      run: |
+        # Download static x86_64 version of linuxdeploy for all architectures
+        wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-static-x86_64.AppImage
+        mv linuxdeploy-static-x86_64.AppImage linuxdeploy.AppImage
+        chmod +x linuxdeploy.AppImage
+        
+        # For non-amd64 architectures, we need to use QEMU
+        if [ "${{ matrix.arch }}" != "amd64" ]; then
+          # Extract AppImage without trying to run it
+          ./linuxdeploy.AppImage --appimage-extract
+          # Make the extracted AppRun executable use QEMU
+          mv squashfs-root/AppRun squashfs-root/AppRun.original
+          echo '#!/bin/bash' > squashfs-root/AppRun
+          echo 'exec qemu-${{ matrix.linuxdeploy-arch }}-static "$(dirname $0)/AppRun.original" "$@"' >> squashfs-root/AppRun
+          chmod +x squashfs-root/AppRun
+        fi
+
+    - name: Set version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+
+    - name: Setup GPG
+      run: |
+        echo "${{ secrets.APPIMAGE_GPG_KEY }}" | gpg --batch --import
+        echo "allow-preset-passphrase" > ~/.gnupg/gpg-agent.conf
+        gpg-connect-agent RELOADAGENT /bye
+        # Store passphrase in GPG agent
+        echo "${{ secrets.APPIMAGE_GPG_PASSPHRASE }}" | /usr/lib/gnupg2/gpg-preset-passphrase --preset "${{ secrets.APPIMAGE_GPG_KEYGRIP }}"
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '16.20.2'
+        architecture: ${{ matrix.node-arch }}
+
+    - name: Build and Package Application
+      env:
+        LDAI_UPDATE_INFORMATION: "gh-releases-zsync|signum-network|signum-node|${VERSION}|signum-node-${{ matrix.java-arch }}-*.AppImage.zsync"
+        LINUXDEPLOY_OUTPUT_VERSION: ${{ env.VERSION }}
+        SIGN_KEY: ${{ secrets.APPIMAGE_GPG_KEYID }}
+      run: |
+        sed -i 's/download = true/download = false/g' build.gradle
+
+        # Build Signum Node Zip
+        chmod +x ./gradlew
+        ./gradlew clean dist jdeps \
+          --no-daemon \
+          -Pjdeps.recursive=true \
+          -Pjdeps.ignore.missing.deps=true \
+          -Pjdeps.print.module.deps=true
+        
+        # Create a directory for AppDir
+        mkdir -p AppDir/usr/bin
+        mkdir -p AppDir/usr/share/applications
+        
+        # Create custom JRE using jlink with additional modules for broader compatibility
+        jlink \
+          --module-path /opt/java/openjdk/jmods \
+          --add-modules $(cat build/reports/jdeps/print-module-deps-main.txt) \
+          --strip-debug \
+          --compress=2 \
+          --no-header-files \
+          --no-man-pages \
+          --output AppDir/usr/java
+        
+        # Copy your application JAR
+        unzip -o build/distributions/signum-node.zip -d AppDir/usr/share/
+        rm -rf AppDir/usr/share/signum-node.exe 2> /dev/null || true
+        cp update-*.sh AppDir/usr/share/
+        chmod +x AppDir/usr/share/update-*.sh
+        
+        # Create launch script
+        mkdir -p AppDir/usr/bin
+        cat > AppDir/AppRun << 'EOFAPPRUN'
+        #!/bin/sh
+        JAVA_HOME="$APPDIR/usr/java"
+        ./$APPDIR/usr/share/update-phoenix.sh
+        ./$APPDIR/usr/share/update-classic.sh
+        ./$APPDIR/usr/share/update-openapi.sh
+        "$JAVA_HOME/bin/java" -jar "$APPDIR/usr/share/signum-node.jar"
+        EOFAPPRUN
+        chmod +x AppDir/AppRun
+
+        # Add icon
+        mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps/
+        convert AppDir/usr/share/html/ui/favicon.ico AppDir/usr/share/icons/hicolor/256x256/apps/signum-node.png
+        ln -s ./usr/share/icons/hicolor/256x256/apps/signum-node.png AppDir/.DirIcon
+
+        # Create .desktop file
+        cat > AppDir/usr/share/applications/signum-node.desktop << EOFDESKTOP
+        [Desktop Entry]
+        Name=Signum Node
+        Exec=AppRun
+        Icon=signum-node
+        Type=Application
+        Categories=Utility;
+        X-AppImage-UpdateInformation=${UPDATE_INFORMATION}
+        X-AppImage-Signature=sha256withRSA
+        X-AppImage-Type=2
+        EOFDESKTOP
+
+        # Create AppStream metadata
+        mkdir -p AppDir/usr/share/metainfo/
+        cat > AppDir/usr/share/metainfo/network.signum.node.appdata.xml << EOFMETADATA
+        <?xml version="1.0" encoding="UTF-8"?>
+        <component type="desktop-application">
+          <id>network.signum.node</id>
+          <metadata_license>MIT</metadata_license>
+          <project_license>GPL-3.0</project_license>
+          <name>Signum Node</name>
+          <summary>Signum Network Node</summary>
+          <description>
+            <p>
+              A Signum Network node implementation that helps maintain and secure the Signum blockchain network.
+            </p>
+          </description>
+          <categories>
+            <category>Utility</category>
+            <category>Network</category>
+          </categories>
+          <url type="homepage">https://github.com/signum-network/signum-node</url>
+          <provides>
+            <binary>signum-node</binary>
+          </provides>
+          <releases>
+            <release version="${VERSION}" date="$(date +%Y-%m-%d)" />
+          </releases>
+          <content_rating type="oars-1.1" />
+        </component>
+        EOFMETADATA
+
+        # Run linuxdeploy with QEMU if needed
+        if [ "${{ matrix.arch }}" != "amd64" ]; then
+          ./squashfs-root/AppRun \
+            --appdir=AppDir \
+            --desktop-file=AppDir/usr/share/applications/signum-node.desktop \
+            --icon-file=AppDir/usr/share/icons/hicolor/256x256/apps/signum-node.png \
+            --output=appimage
+        else
+          ./linuxdeploy.AppImage \
+            --appdir=AppDir \
+            --desktop-file=AppDir/usr/share/applications/signum-node.desktop \
+            --icon-file=AppDir/usr/share/icons/hicolor/256x256/apps/signum-node.png \
+            --output=appimage
+        fi
+
+    
+    - name: Rename AppImage
+      run: |
+        mv Signum_Node-*.AppImage signum-node-${{ matrix.java-arch }}.AppImage
+        mv Signum_Node-*.AppImage.asc signum-node-${{ matrix.java-arch }}.AppImage.asc || true
+        mv Signum_Node-*.AppImage.zsync signum-node-${{ matrix.java-arch }}.AppImage.zsync || true
+    
+    - name: Copy Zip artifacts
+      run: |
+        mkdir -p dist
+        cp build/distributions/signum-node.zip dist/signum-node-${{ matrix.java-arch }}.zip
+    
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: appimage-${{ matrix.java-arch }}
+        path: |
+          signum-node-${{ matrix.java-arch }}.AppImage
+          signum-node-${{ matrix.java-arch }}.AppImage.asc
+          signum-node-${{ matrix.java-arch }}.AppImage.zsync
+          dist/signum-node-${{ matrix.java-arch }}.zip
+  
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+    - name: Download Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        pattern: appimage-*
+        path: artifacts
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          artifacts/appimage-x64/signum-node-x64.AppImage
+          artifacts/appimage-x64/signum-node-x64.AppImage.asc
+          artifacts/appimage-x64/signum-node-x64.AppImage.zsync
+          artifacts/appimage-x64/signum-node-x64.zip
+          artifacts/appimage-aarch64/signum-node-aarch64.AppImage
+          artifacts/appimage-aarch64/signum-node-aarch64.AppImage.asc
+          artifacts/appimage-aarch64/signum-node-aarch64.AppImage.zsync
+          artifacts/appimage-aarch64/signum-node-aarch64.zip
+          artifacts/appimage-arm/signum-node-arm.AppImage
+          artifacts/appimage-arm/signum-node-arm.AppImage.asc
+          artifacts/appimage-arm/signum-node-arm.AppImage.zsync
+          artifacts/appimage-arm/signum-node-arm.zip
+        draft: false
+        prerelease: false
