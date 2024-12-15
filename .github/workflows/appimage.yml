@@ -101,7 +101,7 @@ jobs:
           # Make the extracted AppRun executable use QEMU
           mv squashfs-root/AppRun squashfs-root/AppRun.original
           echo '#!/bin/bash' > squashfs-root/AppRun
-          echo 'exec qemu-${{ matrix.linuxdeploy-arch }}-static "$(dirname $0)/AppRun.original" "$@"' >> squashfs-root/AppRun
+          echo 'exec qemu-${{ matrix.java-arch }}-static "$(dirname $0)/AppRun.original" "$@"' >> squashfs-root/AppRun
           chmod +x squashfs-root/AppRun
         fi
 
